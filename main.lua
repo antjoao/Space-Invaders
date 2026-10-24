@@ -7,7 +7,7 @@ local Powerup = require("src.powerup")
 local FloatingText = require("src.floatingtext")
 local Achievements = require("src.achievements")
 local Menu = require("src.menu")
-local Shop = require("src.shop") -- NOVO
+local Shop = require("src.shop")
 
 local game = {
     player = nil, aliens = {}, enemyBullets = {}, particles = {}, powerups = {}, floatingTexts = {}, coins = {},
@@ -68,7 +68,7 @@ function love.load()
     network.fetchScores()
     createStars()
     Achievements.load()
-    Shop.load() -- NOVO: Carrega as moedas e upgrades
+    Shop.load()
 
     game.canvas = love.graphics.newCanvas(love.graphics.getWidth(), love.graphics.getHeight())
     game.canvas:setFilter("nearest", "nearest")
@@ -85,6 +85,15 @@ local function resetGame()
     game.defeated = 0; game.score = 0; game.state = "playing"; game.nameSubmitted = false
     game.sessionKills = 0; game.sessionBossKills = 0
     startWave(1)
+end
+
+-- NOVO: Função para voltar ao menu limpando o estado
+local function backToMenu()
+    game.player:stopSounds()
+    game.state = "menu"
+    Menu.reset()
+    game.score = 0
+    game.aliens = {}; game.enemyBullets = {}; game.particles = {}; game.powerups = {}; game.floatingTexts = {}; game.coins = {}
 end
 
 local function playerDied()
@@ -124,15 +133,12 @@ function love.update(dt)
     for i = #game.particles, 1, -1 do local p = game.particles[i]; p:update(dt); if p.dead then table.remove(game.particles, i) end end
     for i = #game.floatingTexts, 1, -1 do local ft = game.floatingTexts[i]; ft:update(dt); if ft.dead then table.remove(game.floatingTexts, i) end end
     
-    -- NOVO: Update das Moedas
     for i = #game.coins, 1, -1 do
         local c = game.coins[i]
-        c.y = c.y + 150 * dt -- Cai para baixo
-        
-        -- Colisão com o player
+        c.y = c.y + 150 * dt
         local px, py = game.player.x, game.player.y
         if utils.checkCollision(c.x, c.y, 16, 16, px, py, game.player.width, game.player.height) then
-            Shop.addCoins(1) -- Adiciona 1 moeda
+            Shop.addCoins(1)
             table.remove(game.coins, i)
         elseif c.y > love.graphics.getHeight() then
             table.remove(game.coins, i)
@@ -210,7 +216,6 @@ function love.update(dt)
                     
                     if alien.hp <= 0 then game.sessionKills = game.sessionKills + 1 end
                     
-                    -- NOVO: Drop de Moeda (50% de chance)
                     if math.random() < 0.5 then
                         table.insert(game.coins, {x = alienCx - 8, y = alienCy - 8})
                     end
@@ -221,7 +226,6 @@ function love.update(dt)
                         table.insert(game.powerups, Powerup.new(alienCx, alienCy, "shield"))
                         table.insert(game.powerups, Powerup.new(alienCx + 30, alienCy, "heavy_shot"))
                         game.sessionBossKills = game.sessionBossKills + 1
-                        -- Boss dropa 10 moedas
                         for k = 1, 10 do
                             table.insert(game.coins, {x = alienCx - 8 + math.random(-30, 30), y = alienCy - 8})
                         end
@@ -280,7 +284,6 @@ function love.update(dt)
     end
 end
 
--- (Funções drawHUD, drawOverlay, drawNameEntry, drawLeaderboard mantidas)
 local function drawHUD()
     love.graphics.setColor(1, 1, 1, 1); love.graphics.setFont(game.font); love.graphics.print("Score: " .. game.score, 10, 10)
     love.graphics.setFont(game.smallFont); love.graphics.print("Wave: " .. game.wave, 10, 30); love.graphics.print("Vidas: ", 10, 50)
@@ -324,11 +327,16 @@ local function drawNameEntry()
     love.graphics.setColor(1, 1, 1, 1); love.graphics.setFont(game.bigFont)
     local nameText = game.playerName .. (math.floor(love.timer.getTime() * 2) % 2 == 0 and "|" or "")
     love.graphics.print(nameText, boxX + 15, boxY + 6)
+    
+    -- NOVO: Instrução para sair
+    love.graphics.setFont(game.font)
+    love.graphics.setColor(0.7, 0.7, 0.7, 1)
+    love.graphics.print("Aperte ESC para pular", (love.graphics.getWidth() - game.font:getWidth("Aperte ESC para pular")) / 2, 380)
 end
 local function drawLeaderboard()
     drawOverlay()
     love.graphics.setColor(0, 1, 0, 1); love.graphics.setFont(game.bigFont)
-    local title = "TOP 10"; love.graphics.print(title, (love.graphics.getWidth() - game.bigFont:getWidth(title)) / 2, 100)
+    local title = "TOP 10"; love.graphics.print(title, (love.graphics.getWidth() - game.bigFont:getWidth(title)) / 2, 80)
     love.graphics.setFont(game.font)
     if not game.scoresLoaded then love.graphics.setColor(1, 1, 1, 1); love.graphics.print("Carregando...", 140, 200)
     else for i, entry in ipairs(game.topScores) do
@@ -336,7 +344,11 @@ local function drawLeaderboard()
         love.graphics.setColor(color); local line = string.format("%2d. %-15s %6d", i, entry.name, entry.score); love.graphics.print(line, 80, 140 + (i - 1) * 28)
     end end
     love.graphics.setColor(1, 1, 1, 1); love.graphics.setFont(game.smallFont)
-    local hint = "Pressione R para jogar de novo"; love.graphics.print(hint, (love.graphics.getWidth() - game.smallFont:getWidth(hint)) / 2, 520)
+    local hint1 = "Pressione R para jogar de novo"
+    local hint2 = "Pressione ESC para voltar ao Menu"
+    love.graphics.print(hint1, (love.graphics.getWidth() - game.smallFont:getWidth(hint1)) / 2, 500)
+    love.graphics.setColor(0.7, 0.7, 0.7, 1)
+    love.graphics.print(hint2, (love.graphics.getWidth() - game.smallFont:getWidth(hint2)) / 2, 520)
 end
 
 local function drawGame()
@@ -347,14 +359,9 @@ local function drawGame()
     end
     love.graphics.setColor(1, 1, 1, 1)
     love.graphics.setBlendMode("add"); for _, p in ipairs(game.particles) do p:draw() end; love.graphics.setBlendMode("alpha")
-    
-    -- NOVO: Desenha as moedas
-    love.graphics.setColor(1, 0.8, 0, 1) -- Dourado
-    for _, c in ipairs(game.coins) do
-        love.graphics.circle("fill", c.x + 8, c.y + 8, 6)
-    end
+    love.graphics.setColor(1, 0.8, 0, 1)
+    for _, c in ipairs(game.coins) do love.graphics.circle("fill", c.x + 8, c.y + 8, 6) end
     love.graphics.setColor(1, 1, 1, 1)
-
     for _, p in ipairs(game.powerups) do p:draw() end
     game.player:draw(); for _, alien in ipairs(game.aliens) do alien:draw() end
     love.graphics.setBlendMode("add"); for _, b in ipairs(game.enemyBullets) do b:draw() end; love.graphics.setBlendMode("alpha")
@@ -401,7 +408,7 @@ function love.keypressed(key)
     if game.state == "playing" then
         if key == "space" then game.player:shoot()
         elseif key == "lshift" or key == "rshift" then game.player:dash()
-        elseif key == "escape" then game.state = "menu"; Menu.reset() end
+        elseif key == "escape" then backToMenu() end -- NOVO: Volta ao menu direto do jogo
     elseif game.state == "enteringName" then
         if key == "return" then
             if #game.playerName > 0 and not game.nameSubmitted then
@@ -411,10 +418,12 @@ function love.keypressed(key)
                 game.state = "gameOver"
             end
         elseif key == "backspace" then game.playerName = game.playerName:sub(1, -2)
-        elseif key == "escape" then game.state = "gameOver" end
+        elseif key == "escape" then 
+            backToMenu() -- NOVO: Volta ao menu pulando a entrada de nome
+        end
     elseif game.state == "gameOver" then
         if key == "r" then resetGame() 
-        elseif key == "escape" then game.state = "menu"; Menu.reset() end
+        elseif key == "escape" then backToMenu() end -- NOVO: Volta ao menu
     end
 end
 
