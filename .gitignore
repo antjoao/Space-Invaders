@@ -1,0 +1,15 @@
+# Banco de dados do servidor
+scores.db
+*.db
+
+# Cache do Python
+__pycache__/
+*.pyc
+.venv/
+
+# Arquivos de Save do jogo (LÖVE)
+achievements.json
+shop.json
+
+# Arquivos de sistema
+.DS_Store
