@@ -14,3 +14,9 @@ shop.json
 # Arquivos de sistema
 .DS_Store
 space-invaders.love
+
+# Builds e arquivos gerados
+build/
+squashfs-root/
+*.AppImage
+space-invaders.love
