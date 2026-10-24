@@ -20,12 +20,13 @@ local game = {
     playerName = "", topScores = {}, scoresLoaded = false, nameSubmitted = false,
     crtShader = nil, canvas = nil,
 
-    -- NOVO: Transição e Hardcore
-    fadeAlpha = 0, -- 0 (transparente) a 1 (preto)
-    fadeState = "none", -- "none", "out", "in", "wait"
-    fadeCallback = nil,
+    fadeAlpha = 0, fadeState = "none", fadeCallback = nil,
     isHardcore = false,
-    localScores = {} -- NOVO: Leaderboard Local
+    localScores = {},
+
+    -- NOVO: Variáveis do Continue
+    continueTimer = 0,
+    continueCost = 5
 }
 
 local function createStars()
@@ -40,21 +41,15 @@ local function triggerScreenShake(intensity, duration) game.screenShakeIntensity
 local function triggerHitStop(duration) game.hitStopTimer = duration end
 local function triggerDamageFlash() game.damageFlashTimer = 0.15 end
 
--- NOVO: Salva o score local e carrega
 local function saveLocalScore(name, score)
     local file = "local_scores.txt"
     local content = love.filesystem.getInfo(file) and love.filesystem.read(file) or ""
     local scores = {}
-    for n, s in content:gmatch("(.-);(%d+)") do
-        table.insert(scores, {name = n, score = tonumber(s)})
-    end
+    for n, s in content:gmatch("(.-);(%d+)") do table.insert(scores, {name = n, score = tonumber(s)}) end
     table.insert(scores, {name = name, score = score})
     table.sort(scores, function(a, b) return a.score > b.score end)
-    
     local newContent = ""
-    for i = 1, math.min(5, #scores) do
-        newContent = newContent .. scores[i].name .. ";" .. scores[i].score .. "\n"
-    end
+    for i = 1, math.min(5, #scores) do newContent = newContent .. scores[i].name .. ";" .. scores[i].score .. "\n" end
     love.filesystem.write(file, newContent)
 end
 
@@ -62,23 +57,15 @@ local function loadLocalScores()
     local file = "local_scores.txt"
     game.localScores = {}
     if love.filesystem.getInfo(file) then
-        for n, s in love.filesystem.read(file):gmatch("(.-);(%d+)") do
-            table.insert(game.localScores, {name = n, score = tonumber(s)})
-        end
+        for n, s in love.filesystem.read(file):gmatch("(.-);(%d+)") do table.insert(game.localScores, {name = n, score = tonumber(s)}) end
     end
 end
 
--- NOVO: Função para iniciar o Fade
-local function startFade(callback)
-    game.fadeState = "out"
-    game.fadeCallback = callback
-end
+local function startFade(callback) game.fadeState = "out"; game.fadeCallback = callback end
 
 local function startWave(waveNumber)
     game.wave = waveNumber; game.aliensKilledThisWave = 0; game.spawnTimer = 0; game.aliens = {}; game.enemyBullets = {}
-    
     local speedMult = game.isHardcore and 1.5 or 1.0
-    
     if game.wave % 3 == 0 then
         game.bossActive = true; game.spawnRate = 999
         local boss = Alien.new((love.graphics.getWidth() - 120) / 2, -150, true)
@@ -92,69 +79,82 @@ local function startWave(waveNumber)
         Dialogue.say(game.isHardcore and "MODO PESADELO ATIVADO!" or "TERRAQUEO... VOCE NAO DEVERIA ESTAR AQUI.", 3.5)
         triggerScreenShake(15, 1.0)
     else
-        game.bossActive = false
-        game.spawnRate = math.max(0.5, 1.5 - (game.wave * 0.1))
-        game.aliensPerWave = 10 + (game.wave * 2)
+        game.bossActive = false; game.spawnRate = math.max(0.5, 1.5 - (game.wave * 0.1)); game.aliensPerWave = 10 + (game.wave * 2)
     end
 end
 
 function love.load()
-    love.graphics.setDefaultFilter("nearest", "nearest")
-    love.audio.setVolume(0.5)
-    game.player = Player.new()
-    game.font = love.graphics.newFont(16); game.smallFont = love.graphics.newFont(12); game.bigFont = love.graphics.newFont(24)
+    love.graphics.setDefaultFilter("nearest", "nearest"); love.audio.setVolume(0.5)
+    game.player = Player.new(); game.font = love.graphics.newFont(16); game.smallFont = love.graphics.newFont(12); game.bigFont = love.graphics.newFont(24)
     game.soundExplosion = utils.generateSound("noise", 0, 0.3, 0.5)
     network.onScoresReceived = function(scores) game.topScores = scores; game.scoresLoaded = true end
     network.fetchScores(); createStars(); Achievements.load(); Shop.load(); loadLocalScores()
-
-    game.canvas = love.graphics.newCanvas(love.graphics.getWidth(), love.graphics.getHeight())
-    game.canvas:setFilter("nearest", "nearest")
+    game.canvas = love.graphics.newCanvas(love.graphics.getWidth(), love.graphics.getHeight()); game.canvas:setFilter("nearest", "nearest")
     local success, shader = pcall(love.graphics.newShader, "shaders/crt.fs")
     if success then game.crtShader = shader; game.crtShader:send("screenSize", {love.graphics.getWidth(), love.graphics.getHeight()}) end
 end
 
 local function resetGame()
-    game.player = Player.new()
-    if game.isHardcore then game.player.lives = 1 end -- Hardcore = 1 vida
+    game.player = Player.new(); if game.isHardcore then game.player.lives = 1 end
     game.aliens = {}; game.enemyBullets = {}; game.particles = {}; game.powerups = {}; game.floatingTexts = {}; game.coins = {}
     game.defeated = 0; game.score = 0; game.state = "playing"; game.nameSubmitted = false; game.sessionKills = 0; game.sessionBossKills = 0
+    game.continueTimer = 0
     startWave(1)
 end
 
 local function backToMenu() 
-    game.player:stopSounds(); 
-    game.state = "menu"; 
-    Menu.reset(); 
-    game.score = 0; 
+    game.player:stopSounds(); game.state = "menu"; Menu.reset(); game.score = 0
     game.aliens = {}; game.enemyBullets = {}; game.particles = {}; game.powerups = {}; game.floatingTexts = {}; game.coins = {}
-    game.isHardcore = false
+    game.isHardcore = false; game.continueTimer = 0
 end
 
 local function playerDied()
-    game.state = "enteringName"
-    game.playerName = ""
-    game.player:stopSounds()
-    Achievements.updateStats(game.sessionKills, game.wave, game.sessionBossKills, game.score)
+    -- Se tiver moedas suficientes, abre a tela de Continue
+    if Shop.getCoins() >= game.continueCost then
+        game.state = "continue"
+        game.continueTimer = 5.0 -- 5 segundos para decidir
+    else
+        game.state = "enteringName"
+        game.playerName = ""
+        game.player:stopSounds()
+        Achievements.updateStats(game.sessionKills, game.wave, game.sessionBossKills, game.score)
+    end
+end
+
+local function doContinue()
+    Shop.addCoins(-game.continueCost)
+    game.player = Player.new()
+    game.player.lives = 1 -- Volta com 1 vida
+    game.player.invulnerableTimer = 3.0 -- 3s de invencibilidade após reviver
+    game.state = "playing"
+    
+    -- Limpa inimigos da tela para não morrer na hora
+    game.aliens = {}
+    game.enemyBullets = {}
+    game.continueTimer = 0
 end
 
 function love.update(dt)
     network.update(); Achievements.update(dt); Dialogue.update(dt); Shop.update(dt)
     
-    -- NOVO: Lógica do Fade
+    if game.state == "continue" then
+        game.continueTimer = game.continueTimer - dt
+        if game.continueTimer <= 0 then
+            -- Tempo esgotado, vai pro Game Over
+            game.state = "enteringName"
+            game.playerName = ""
+            game.player:stopSounds()
+            Achievements.updateStats(game.sessionKills, game.wave, game.sessionBossKills, game.score)
+        end
+        return
+    end
+
     if game.fadeState == "out" then
         game.fadeAlpha = game.fadeAlpha + dt * 2
-        if game.fadeAlpha >= 1 then
-            game.fadeAlpha = 1
-            game.fadeState = "wait"
-            if game.fadeCallback then game.fadeCallback(); game.fadeCallback = nil end
-            game.fadeState = "in"
-        end
+        if game.fadeAlpha >= 1 then game.fadeAlpha = 1; game.fadeState = "wait"; if game.fadeCallback then game.fadeCallback(); game.fadeCallback = nil end; game.fadeState = "in" end
     elseif game.fadeState == "in" then
         game.fadeAlpha = game.fadeAlpha - dt * 2
-        if game.fadeAlpha <= 0 then
-            game.fadeAlpha = 0
-            game.fadeState = "none"
-        end
+        if game.fadeAlpha <= 0 then game.fadeAlpha = 0; game.fadeState = "none" end
     end
     
     if game.state == "menu" then Menu.update(dt); return end
@@ -171,8 +171,7 @@ function love.update(dt)
     for i = #game.floatingTexts, 1, -1 do local ft = game.floatingTexts[i]; ft:update(dt); if ft.dead then table.remove(game.floatingTexts, i) end end
     
     for i = #game.coins, 1, -1 do
-        local c = game.coins[i]; c.y = c.y + 150 * dt
-        local px, py = game.player.x, game.player.y
+        local c = game.coins[i]; c.y = c.y + 150 * dt; local px, py = game.player.x, game.player.y
         if utils.checkCollision(c.x, c.y, 16, 16, px, py, game.player.width, game.player.height) then Shop.addCoins(1); table.remove(game.coins, i)
         elseif c.y > love.graphics.getHeight() then table.remove(game.coins, i) end
     end
@@ -181,8 +180,7 @@ function love.update(dt)
         game.spawnTimer = game.spawnTimer + dt
         if game.spawnTimer >= game.spawnRate then
             local x = math.random(0, love.graphics.getWidth() - 40); local alien = Alien.new(x, -20, false)
-            if game.wave > 3 then alien.hp = 2 end
-            if game.isHardcore then alien.speed = alien.speed * 1.5 end -- Hardcore = aliens mais rápidos
+            if game.wave > 3 then alien.hp = 2 end; if game.isHardcore then alien.speed = alien.speed * 1.5 end
             table.insert(game.aliens, alien); game.spawnTimer = 0
         end
     end
@@ -197,8 +195,7 @@ function love.update(dt)
     for i = #game.enemyBullets, 1, -1 do local b = game.enemyBullets[i]; b:update(dt); if b.dead then table.remove(game.enemyBullets, i) end end
 
     for i = #game.powerups, 1, -1 do
-        local p = game.powerups[i]; p:update(dt)
-        local px, py = game.player.x, game.player.y
+        local p = game.powerups[i]; p:update(dt); local px, py = game.player.x, game.player.y
         if utils.checkCollision(p.x, p.y, p.width, p.height, px, py, game.player.width, game.player.height) then
             if p.type == "triple_shot" then game.player.tripleShotTimer = 7
             elseif p.type == "shield" then game.player.shieldTimer = 7
@@ -240,7 +237,7 @@ function love.update(dt)
         local b = game.enemyBullets[i]; local bx, by = b.x + b.width/2, b.y + b.height/2
         if utils.checkCircleCollision(bx, by, 2, px, py, game.player.width/2 - 5) then
             table.remove(game.enemyBullets, i)
-            if game.player:takeDamage() then triggerScreenShake(8, 0.3); triggerDamageFlash(); if game.player.lives <= 0 then startFade(playerDied) end end
+            if game.player:takeDamage() then triggerScreenShake(8, 0.3); triggerDamageFlash(); if game.player.lives <= 0 then playerDied() end end
         end
     end
 
@@ -250,7 +247,7 @@ function love.update(dt)
             spawnExplosion(alienCx, alienCy, {0, 1, 1, 1})
             if alien:takeDamage(999) then table.remove(game.aliens, i); if not alien.isBoss then game.aliensKilledThisWave = game.aliensKilledThisWave + 1 end end
             game.soundExplosion:clone():play()
-            if game.player:takeDamage() then triggerScreenShake(8, 0.3); triggerDamageFlash(); if game.player.lives <= 0 then startFade(playerDied) end end
+            if game.player:takeDamage() then triggerScreenShake(8, 0.3); triggerDamageFlash(); if game.player.lives <= 0 then playerDied() end end
         end
     end
 
@@ -273,10 +270,7 @@ local function drawHUD()
     if game.player.tripleShotTimer > 0 then utils.drawPixelText("TRIPLE:" .. math.ceil(game.player.tripleShotTimer), 10, 100, 1, {1, 0.8, 0, 1}) end
     if game.player.shieldTimer > 0 then utils.drawPixelText("SHIELD:" .. math.ceil(game.player.shieldTimer), 10, 115, 1, {0, 1, 1, 1}) end
     if game.player.heavyShotTimer > 0 then utils.drawPixelText("HEAVY:" .. math.ceil(game.player.heavyShotTimer), 10, 130, 1, {1, 0, 1, 1}) end
-    
-    if game.isHardcore then
-        utils.drawPixelText("HARDCORE", love.graphics.getWidth() - 70, 10, 2, {1, 0, 0, 1})
-    end
+    if game.isHardcore then utils.drawPixelText("HARDCORE", love.graphics.getWidth() - 70, 10, 2, {1, 0, 0, 1}) end
 
     if game.bossActive and #game.aliens > 0 then
         local boss = nil; for _, a in ipairs(game.aliens) do if a.isBoss then boss = a break end end
@@ -287,22 +281,39 @@ local function drawHUD()
             utils.drawPixelText("BOSS:" .. math.floor(boss.hp), (love.graphics.getWidth() - 80) / 2, barY + 22, 2, {1, 0, 0, 1})
         end
     end
-
     if game.waveTransitionTimer > 0 then local text = "WAVE " .. (game.wave + 1); local tw = #text * 4 * 5; utils.drawPixelText(text, (love.graphics.getWidth() - tw) / 2, 250, 5, {1, 1, 0, 1}) end
 end
 
 local function drawOverlay() love.graphics.setColor(0, 0, 0, 0.75); love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight()) end
 
+-- NOVO: Tela de Continue
+local function drawContinue()
+    drawOverlay()
+    utils.drawPixelText("CONTINUE?", (love.graphics.getWidth() - 9*4*5)/2, 150, 5, {1, 0.8, 0, 1})
+    
+    local text = "APERTE ENTER PARA RENASCER"
+    utils.drawPixelText(text, (love.graphics.getWidth() - #text * 4 * 1.5)/2, 230, 1.5, {1, 1, 1, 1})
+    
+    local costText = "CUSTO: " .. game.continueCost .. " MOEDAS"
+    utils.drawPixelText(costText, (love.graphics.getWidth() - #costText * 4 * 1.5)/2, 270, 1.5, {1, 0.8, 0, 1})
+    
+    -- Contagem regressiva grande
+    local timer = math.ceil(game.continueTimer)
+    local timerStr = tostring(timer)
+    utils.drawPixelText(timerStr, (love.graphics.getWidth() - #timerStr * 4 * 10)/2, 330, 10, {1, 0, 0, 1})
+    
+    local coins = Shop.getCoins()
+    local coinText = "SUAS MOEDAS: " .. coins
+    utils.drawPixelText(coinText, (love.graphics.getWidth() - #coinText * 4 * 1.5)/2, 450, 1.5, {0, 1, 1, 1})
+end
+
 local function drawNameEntry()
     drawOverlay(); utils.drawPixelText("GAME OVER", (love.graphics.getWidth() - 9*4*5)/2, 150, 5, {1, 0, 0, 1})
-    
-    -- NOVO: Leaderboard Local no Game Over
     utils.drawPixelText("MELHORES LOCAIS:", (love.graphics.getWidth() - 15*4*2)/2, 210, 2, {0, 1, 1, 1})
     for i = 1, math.min(3, #game.localScores) do
         local entry = game.localScores[i]
         utils.drawPixelText(string.format("%d. %s - %d", i, entry.name:upper(), entry.score), (love.graphics.getWidth() - 20*4*1.5)/2, 240 + (i-1)*20, 1.5, {0.8, 0.8, 0.8, 1})
     end
-    
     utils.drawPixelText("SEU SCORE: " .. game.score, (love.graphics.getWidth() - 16*4*2)/2, 320, 2, {1, 1, 0, 1})
     utils.drawPixelText("DIGITE SEU NOME E ENTER:", (love.graphics.getWidth() - 24*4*1.5)/2, 370, 1.5, {1, 1, 1, 1})
     local boxW, boxH = 240, 40; local boxX = (love.graphics.getWidth() - boxW) / 2; local boxY = 400
@@ -334,7 +345,6 @@ local function drawGame()
         love.graphics.circle("fill", love.graphics.getWidth()/2 + math.sin(time + i)*100, love.graphics.getHeight()/2 + math.cos(time*0.5 + i)*100, 200)
     end
     love.graphics.setBlendMode("alpha")
-
     for _, star in ipairs(game.stars) do
         if star.layer == 1 then love.graphics.setColor(0.5, 0.5, 0.5, 0.8) elseif star.layer == 2 then love.graphics.setColor(0.8, 0.8, 0.8, 0.9) else love.graphics.setColor(1, 1, 1, 1) end
         love.graphics.rectangle("fill", star.x, star.y, star.size, star.size)
@@ -352,43 +362,51 @@ function love.draw()
     if game.state == "menu" then Menu.draw(); return end
     love.graphics.setCanvas(game.canvas); love.graphics.clear()
     love.graphics.push()
-    if game.screenShakeTimer > 0 then
-        local shakeX = (math.random() - 0.5) * 2 * game.screenShakeIntensity; local shakeY = (math.random() - 0.5) * 2 * game.screenShakeIntensity
-        love.graphics.translate(shakeX, shakeY)
-    end
+    if game.screenShakeTimer > 0 then local shakeX = (math.random() - 0.5) * 2 * game.screenShakeIntensity; local shakeY = (math.random() - 0.5) * 2 * game.screenShakeIntensity; love.graphics.translate(shakeX, shakeY) end
     drawGame()
     love.graphics.pop()
     if game.damageFlashTimer > 0 then local alpha = game.damageFlashTimer / 0.15 * 0.4; love.graphics.setColor(1, 0, 0, alpha); love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight()); love.graphics.setColor(1, 1, 1, 1) end
     love.graphics.setCanvas()
     if game.crtShader then love.graphics.setShader(game.crtShader); love.graphics.setColor(1, 1, 1, 1); love.graphics.draw(game.canvas, 0, 0); love.graphics.setShader()
     else love.graphics.draw(game.canvas, 0, 0) end
-    
-    -- NOVO: Desenha o véu do Fade
-    if game.fadeAlpha > 0 then
-        love.graphics.setColor(0, 0, 0, game.fadeAlpha)
-        love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
-        love.graphics.setColor(1, 1, 1, 1)
+
+    -- Desenha o jogo embaixo do overlay (continue, nameEntry, leaderboard)
+    if game.state == "continue" then
+        drawContinue()
+    elseif game.state == "enteringName" then 
+        drawNameEntry() 
+    elseif game.state == "gameOver" then 
+        drawLeaderboard() 
+    else
+        -- Só desenha o HUD se estiver jogando
+        drawHUD(); Achievements.draw(); Dialogue.draw()
     end
 
-    drawHUD(); Achievements.draw(); Dialogue.draw()
-    if game.state == "enteringName" then drawNameEntry() elseif game.state == "gameOver" then drawLeaderboard() end
+    if game.fadeAlpha > 0 then love.graphics.setColor(0, 0, 0, game.fadeAlpha); love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight()); love.graphics.setColor(1, 1, 1, 1) end
 end
 
 function love.keypressed(key)
     if game.state == "menu" then 
         local action = Menu.keypressed(key)
-        if action == "play_normal" then
-            game.isHardcore = false
-            startFade(resetGame)
-        elseif action == "play_hardcore" then
-            game.isHardcore = true
-            startFade(resetGame)
-        end
+        if action == "play_normal" then game.isHardcore = false; startFade(resetGame)
+        elseif action == "play_hardcore" then game.isHardcore = true; startFade(resetGame) end
         return 
     end
     
     if game.state == "playing" then
         if key == "space" then game.player:shoot() elseif key == "lshift" or key == "rshift" then game.player:dash() elseif key == "escape" then startFade(backToMenu) end
+    elseif game.state == "continue" then
+        if key == "return" then
+            if Shop.getCoins() >= game.continueCost then
+                doContinue()
+            end
+        elseif key == "escape" then
+            -- Desiste do continue, vai pro Game Over
+            game.state = "enteringName"
+            game.playerName = ""
+            game.player:stopSounds()
+            Achievements.updateStats(game.sessionKills, game.wave, game.sessionBossKills, game.score)
+        end
     elseif game.state == "enteringName" then
         if key == "return" then 
             if #game.playerName > 0 and not game.nameSubmitted then 
