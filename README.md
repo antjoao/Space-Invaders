@@ -1,5 +1,7 @@
 # 🚀 Space Invaders — Remake Arcade
 
+## ⬇️ [Baixar e Jogar (Windows / Linux)](https://github.com/antjoao/Space-Invaders/releases/latest)
+
 Um remake moderno e turbinado do clássico **Space Invaders**, construído do zero em **Lua** com o framework **LÖVE 2D**. 
 
 Esqueça o jogo lento dos anos 70. Aqui você tem dash, boss fights, explosões de partículas, efeito de tela de tubo (CRT), loja de melhorias e um placar online global.
