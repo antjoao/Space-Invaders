@@ -1,6 +1,6 @@
 local Menu = {}
 
-local options = { "Jogar", "Loja", "Conquistas", "Sair" }
+local options = { "Jogar (Normal)", "Jogar (Hardcore)", "Loja", "Conquistas", "Sair" }
 local selected = 1
 local state = "main" -- "main", "achievements", "shop"
 
@@ -13,8 +13,7 @@ function Menu.update(dt)
 end
 
 function Menu.draw()
-    love.graphics.setColor(0.02, 0.02, 0.08)
-    love.graphics.rectangle("fill", 0, 0, love.graphics.getWidth(), love.graphics.getHeight())
+    love.graphics.clear(0.02, 0.02, 0.08, 1)
 
     if state == "main" then
         local title = "SPACE INVADERS"
@@ -29,26 +28,26 @@ function Menu.draw()
         
         love.graphics.setFont(love.graphics.newFont(12))
         love.graphics.setColor(0.5, 0.5, 0.5, 1)
-        local sub = "Remake em Lua + LÖVE"
+        local sub = "Remake em Lua + LOVE"
         love.graphics.print(sub, (love.graphics.getWidth() - love.graphics.getFont():getWidth(sub)) / 2, 140)
 
-        -- Mostra as moedas na tela do menu
+        -- Mostra as moedas
         local coins = require("src.shop").getCoins()
         love.graphics.setColor(1, 0.8, 0, 1)
         love.graphics.setFont(love.graphics.newFont(14))
         local coinText = "Moedas: " .. coins
         love.graphics.print(coinText, (love.graphics.getWidth() - love.graphics.getFont():getWidth(coinText)) / 2, 180)
 
-        love.graphics.setFont(love.graphics.newFont(18))
-        local startY = 260
+        love.graphics.setFont(love.graphics.newFont(16))
+        local startY = 240
         for i, opt in ipairs(options) do
             local color = (i == selected) and {0, 1, 1, 1} or {0.5, 0.5, 0.5, 1}
             love.graphics.setColor(color)
             local ow = love.graphics.getFont():getWidth(opt)
-            love.graphics.print(opt, (love.graphics.getWidth() - ow) / 2, startY + (i - 1) * 40)
+            love.graphics.print(opt, (love.graphics.getWidth() - ow) / 2, startY + (i - 1) * 35)
             if i == selected then
                 love.graphics.setColor(0, 1, 1, 1)
-                love.graphics.print(">", (love.graphics.getWidth() - ow) / 2 - 30, startY + (i - 1) * 40)
+                love.graphics.print(">", (love.graphics.getWidth() - ow) / 2 - 30, startY + (i - 1) * 35)
             end
         end
         
@@ -77,12 +76,14 @@ function Menu.keypressed(key)
             if selected > #options then selected = 1 end
         elseif key == "return" or key == "space" then
             if selected == 1 then
-                return "play"
+                return "play_normal"
             elseif selected == 2 then
-                state = "shop"
+                return "play_hardcore"
             elseif selected == 3 then
-                state = "achievements"
+                state = "shop"
             elseif selected == 4 then
+                state = "achievements"
+            elseif selected == 5 then
                 love.event.quit()
             end
         end
