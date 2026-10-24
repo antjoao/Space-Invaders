@@ -1,4 +1,4 @@
-local Menu = require("src.menu")
+local Menu = {}
 
 local options = { "Jogar", "Loja", "Conquistas", "Sair" }
 local selected = 1
