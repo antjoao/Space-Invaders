@@ -42,7 +42,7 @@ python3 server.py
 
 ---
 
-## ✨ O que tem no jogo?
+## O que tem no jogo?
 
 - **Movimentação Fluida:** Mova-se em todas as direções com velocidade consistente (sem vantagem na diagonal).
 - **Dash Tático:** Aperte Shift para dar um impulso rápido. Durante o dash, você fica **invencível**! Use para atravessar as balas do Boss. Tem um tempo de recarga (cooldown).
